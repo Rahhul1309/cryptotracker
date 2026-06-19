@@ -38,9 +38,9 @@ driven by CSS variables, so dark/light is a single token swap.
 - **Accounts** ✅➕ — cookie-session auth (scrypt-hashed, no deps); universal
   search to track *any* Coinbase coin, per-user watchlist, and `/portfolio` P/L
   simulation; preferences persist **server-side per account** across devices.
-- **Quality** ✅➕ — loading/error/empty states with retry; **153 unit tests**
-  (Vitest) + Playwright E2E (mock mode, zero live calls); structured JSON
-  observability (request ids, timing, metrics).
+- **Quality** ✅➕ — loading/error/empty states with retry; **163 unit tests**
+  (Vitest) + Playwright E2E (17 specs, mock mode, zero live calls); structured
+  JSON observability (request ids, timing, metrics).
 
 ---
 
