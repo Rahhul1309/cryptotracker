@@ -1,0 +1,87 @@
+name: CI
+
+# Mechanical enforcement of the verification gate (rules/verification.md) on
+# every push and PR. This is the backstop for the "always run the gate"
+# guardrail in rules/ai-guardrails.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gate:
+    name: Typecheck · Test · Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install (clean, reproducible)
+        run: npm ci
+        env:
+          # Force the public registry in CI regardless of any inherited config.
+          npm_config_registry: https://registry.npmjs.org/
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+        env:
+          npm_config_registry: https://registry.npmjs.org/
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run E2E (mock data — no external API calls)
+        run: npm run test:e2e
+        env:
+          # E2E runs entirely against deterministic mock data; never hits Coinbase.
+          E2E_MOCK: "1"
+          AUTH_SECRET: e2e-ci-secret
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  audit:
+    name: Dependency audit (advisory)
+    runs-on: ubuntu-latest
+    # Advisory only — never blocks the merge; surfaces outdated/vulnerable deps.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+        env:
+          npm_config_registry: https://registry.npmjs.org/
+      - name: Outdated packages
+        run: npm outdated || true
+      - name: Security audit (prod)
+        run: npm audit --omit=dev || true

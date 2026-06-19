@@ -1,0 +1,11 @@
+node_modules
+/build
+/public/build
+.env
+.DS_Store
+/.cache
+coverage
+/.data
+/test-results
+/playwright-report
+/playwright/.cache
