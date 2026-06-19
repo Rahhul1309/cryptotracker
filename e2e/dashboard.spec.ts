@@ -59,6 +59,39 @@ test.describe("dashboard features", () => {
     ).toBeVisible();
   });
 
+  test("an added coin persists across a reload (server prefs)", async ({
+    page,
+  }) => {
+    const search = page.getByPlaceholder(/search any coin/i);
+    await search.click();
+    await search.fill("uni");
+    await page.locator(".panel button", { hasText: /track/i }).first().click();
+    // The added coin's card appears on the dashboard.
+    await expect(page.getByTestId("crypto-card-UNI")).toBeVisible();
+
+    // After a reload it must still be there — the add was flushed to server
+    // prefs immediately, not left to the save debounce (which a reload beats).
+    await page.reload();
+    await expect(page.getByTestId("crypto-card-UNI")).toBeVisible();
+  });
+
+  test("re-adding a previously deleted coin brings it back", async ({
+    page,
+  }) => {
+    // Delete a default coin…
+    await expect(page.getByTestId("crypto-card-SOL")).toBeVisible();
+    await page.getByRole("button", { name: /stop tracking solana/i }).click();
+    await expect(page.getByTestId("crypto-card-SOL")).toHaveCount(0);
+
+    // …then re-add it via search. It must reappear — the add un-hides it
+    // (before the fix it stayed hidden while search read "✓ Tracking").
+    const search = page.getByPlaceholder(/search any coin/i);
+    await search.click();
+    await search.fill("solana");
+    await page.locator(".panel button", { hasText: /track/i }).first().click();
+    await expect(page.getByTestId("crypto-card-SOL")).toBeVisible();
+  });
+
   test("opening a coin shows the detail modal", async ({ page }) => {
     // Click the BTC card by its stable test id (avoids "Bitcoin" vs
     // "Bitcoin Cash" text ambiguity).

@@ -133,7 +133,8 @@ export default function Dashboard() {
   const { rates, snapshot, fetchedAt, user } = useLoaderData<typeof loader>();
 
   // User personalization (accent, density, layout, toggles, coins…).
-  const { settings, update, reset, toggleIn, flushPrefs } = useSettings();
+  const { settings, update, reset, toggleIn, flushPrefs, hydrated, prefsLoaded } =
+    useSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Filter lives in the URL (?q=) so it is shareable and refresh-safe.
@@ -160,28 +161,50 @@ export default function Dashboard() {
   );
   const liveStatus = settings.liveEnabled ? rawStatus : "offline";
 
-  // When the user's tracked set changes (add/remove via search), re-run the
-  // loader so the new coins get real data immediately — no manual refresh.
-  // We FLUSH prefs to the server first, then revalidate, so the loader (which
-  // reads tracked coins from server prefs) sees the new set — not a stale one.
+  // When the user's coin set changes (add via search, or delete a card), FLUSH
+  // prefs to the server immediately — don't rely on the 600ms save debounce,
+  // which a quick reload would beat, letting the stale server value win on the
+  // next load and reverting the change. We track BOTH lists:
+  //  - `tracked` (added coins)   → flush AND revalidate so the loader fetches
+  //                                the new coin's real data without a manual
+  //                                refresh (the loader reads tracked from prefs).
+  //  - `hidden`  (deleted coins) → flush only; nothing new to fetch.
   const revalidator = useRevalidator();
   const trackedKey = settings.tracked.join(",");
-  const hydratedRef = useRef(false);
+  const hiddenKey = settings.hidden.join(",");
+  const prevCoinKeys = useRef<{ tracked: string; hidden: string } | null>(null);
   useEffect(() => {
-    // Skip the very first run (initial mount already has fresh loader data).
-    if (!hydratedRef.current) {
-      hydratedRef.current = true;
+    // Wait until the server prefs have settled. Acting earlier would flush the
+    // transient DEFAULT value (empty coin set) during load and overwrite the
+    // user's real server-side prefs — which is exactly how an added/deleted coin
+    // was vanishing on reload.
+    if (!prefsLoaded) return;
+    // Capture the baseline on the first run AFTER prefs settle (the adopted
+    // value), so we only react to genuine user changes from here on.
+    if (prevCoinKeys.current === null) {
+      prevCoinKeys.current = { tracked: trackedKey, hidden: hiddenKey };
       return;
     }
+    if (
+      prevCoinKeys.current.tracked === trackedKey &&
+      prevCoinKeys.current.hidden === hiddenKey
+    ) {
+      return; // no real change
+    }
+    const trackedChanged = prevCoinKeys.current.tracked !== trackedKey;
+    prevCoinKeys.current = { tracked: trackedKey, hidden: hiddenKey };
+
     let cancelled = false;
     void flushPrefs().then(() => {
-      if (!cancelled) revalidator.revalidate();
+      // Only re-run the loader when the tracked set changed (a new coin needs
+      // its data fetched); hiding a default needs no fetch.
+      if (!cancelled && trackedChanged) revalidator.revalidate();
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackedKey]);
+  }, [trackedKey, hiddenKey, prefsLoaded]);
 
   // When live is OFF we must NOT overlay the (now-stale) last-seen WS prices —
   // we show pure loader data, which interval polling keeps fresh. When live is

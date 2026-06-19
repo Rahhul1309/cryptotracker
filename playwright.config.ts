@@ -37,6 +37,7 @@ export default defineConfig({
       E2E_MOCK: "1",
       AUTH_SECRET: "e2e-test-secret",
       AUTH_DB_PATH: ".data/e2e-users.json",
+      PREFS_DB_PATH: ".data/e2e-prefs.json",
       PORT: String(PORT),
       NODE_ENV: "production",
     },

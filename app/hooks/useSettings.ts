@@ -27,6 +27,11 @@ const SAVE_DEBOUNCE_MS = 600;
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [hydrated, setHydrated] = useState(false);
+  // True once the server-prefs fetch has settled (adopted or failed). Consumers
+  // that act on the coin set (add/remove → flush + revalidate) must wait for
+  // this, so they never flush the transient default value during load and
+  // clobber the user's real server-side prefs.
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   const saveTimer = useRef<number | null>(null);
   // Skip the server POST for changes that came FROM the server hydrate.
   const skipNextSave = useRef(false);
@@ -55,10 +60,23 @@ export function useSettings() {
         // If the user already interacted while this request was in flight, keep
         // their change — don't overwrite it with the loaded server prefs.
         if (cancelled || !body.prefs || userTouched.current) return;
+        // Cancel any save the localStorage-hydrate may have queued. Without this,
+        // a pending POST of the (empty/default) localStorage value fires after we
+        // adopt server prefs and CLOBBERS them — so a coin added on another
+        // device (or before this device cached) vanishes on the next load.
+        if (saveTimer.current !== null) {
+          window.clearTimeout(saveTimer.current);
+          saveTimer.current = null;
+        }
         skipNextSave.current = true; // adopting server state, don't echo it back
         setSettings(mergeSettings(body.prefs));
       } catch {
         /* offline / not logged in → keep localStorage values */
+      } finally {
+        // Signal "server prefs settled" exactly once, whether we adopted them,
+        // the user had already interacted, or the fetch failed. Coin-set
+        // consumers gate their flush/revalidate on this.
+        if (!cancelled) setPrefsLoaded(true);
       }
     })();
     return () => {
@@ -184,5 +202,5 @@ export function useSettings() {
     }
   }, []);
 
-  return { settings, update, reset, toggleIn, flushPrefs, hydrated };
+  return { settings, update, reset, toggleIn, flushPrefs, hydrated, prefsLoaded };
 }
