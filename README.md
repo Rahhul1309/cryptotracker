@@ -227,58 +227,103 @@ control, swapping the data provider).
 
 ## Decisions & tradeoffs
 
-- **Remix v2, not React Router 7.** The exercise specifies Remix. `create-remix`
-  now only redirects to React Router, so the project was scaffolded manually
-  against the stable Remix v2 Vite template.
-- **@dnd-kit over react-beautiful-dnd.** The latter is unmaintained; dnd-kit is
-  typed, accessible, and the current idiomatic choice.
-- **Filter in the URL, order in localStorage.** Filter is ephemeral/shareable so
-  it belongs in the URL; order is a durable user preference so it's persisted.
-  Neither needs a global state library.
-- **Coins absent from the API still render** (with "—") rather than disappearing,
-  so a provider gap degrades gracefully.
-- **Auto-refresh is opt-in** and pauses on hidden tabs to avoid pointless calls.
-- **Theming via CSS variables**, not Tailwind's `dark:` everywhere. One token set
-  re-themes the whole app and keeps card/stat styling declarative.
-- **Sparklines + the interactive chart are hand-rolled SVG** (no charting
-  dependency) — lean, fully on-theme, and the hover-crosshair is just pointer math.
-- **Motion (framer-motion)** is the one animation dependency, added deliberately
-  for spring-based layout and the modal transitions — things CSS can't do
-  cleanly. Reduced-motion is honored throughout.
-- **Auth is cookie-session, not a JWT/localStorage token.** The signed,
-  `httpOnly`, `sameSite=lax` session cookie holds only the user id; the user is
-  looked up server-side per request via `requireUser`, which redirects
-  unauthenticated visitors to `/login`. Passwords are scrypt-hashed (Node
-  built-in — no bcrypt dependency).
-- **Two-tier preference storage.** Per-user prefs (theme, mode, accent,
-  watchlist, tracked coins, order) live **server-side keyed by userId**
-  (`/api/preferences`) so they follow the account across devices; `localStorage`
-  is a fast-path cache for instant, flash-free first paint. **Server wins on
-  load**, but a guard (`userTouched`) prevents the async server hydrate from
-  clobbering an interaction made before it resolves, and a `sendBeacon` flush on
-  page-hide ensures a change immediately followed by reload isn't lost to the
-  save debounce.
-- **"Tracked" and "watchlist" are separate concepts.** Tracking = which coins
-  are fetched/priced/streamed (curated defaults + coins added via search);
-  watchlist = a favorites *view* over tracked coins. Conflating them caused the
-  early "added coin disappears" bugs.
-- **Themes are full palettes, not just an accent swap.** Each of the 9 themes
-  redefines colours, fonts, card shape, and background via a
-  `data-theme` + `data-mode` attribute contract in `tailwind.css`; every theme
-  has both a dark and light mode. Two themes (Ferrari, Terminal) add scoped,
-  opt-in "magical" effects that only mount in that theme and clean up on switch.
-- **Mock data mode (`E2E_MOCK=1`)** lets the whole app run with deterministic
-  fixtures and **zero external calls** — used by Playwright and safe for CI /
-  locked-down machines. A normal `dev`/`start` never sets it and always uses live
-  Coinbase data.
-- **File-backed JSON stores** (`.data/*.json`) back users, prefs, and portfolios.
-  Dependency-free and fine for a demo; each is isolated behind a store module so
-  swapping in a real database touches only that one file.
+Each choice below names the **alternative** and what it **costs**, not just what
+was picked — the point is to make the engineering judgement visible.
 
-### If I had more time
-- Replace the JSON file stores with SQLite/Postgres (the store modules already
-  isolate this).
-- Sort controls (by price / 24h change) — the pure `lib/` layer is shaped for it.
-- Rate-limit/backoff handling and a stale-while-revalidate cache on the server.
-- Broaden E2E coverage (portfolio P&L, per-theme effects) and add visual
-  regression snapshots.
+- **Pure logic in `app/lib/`, presentation in components.** Every rate
+  calculation, filter, reorder, and formatter is a side-effect-free function with
+  a unit test; components only render. **Win:** the hard-to-get-right math is
+  testable in isolation and the UI is swappable. **Cost:** more files and a
+  little ceremony moving values across the boundary — paid back the first time a
+  number was wrong and the failing test pointed straight at the bug.
+
+- **One data path: the Remix loader.** All fetching is server-side in the route
+  loader; refresh = `revalidate`, never a second client fetch. **Win:** one
+  source of truth, good SSR, no API surface in the browser. **Cost:** "just fetch
+  it in the component" is off-limits, so live prices needed a deliberate second
+  boundary (the WebSocket) rather than an ad-hoc `useEffect`.
+
+- **Live prices augment, never depend.** The Coinbase WebSocket overlays ticks
+  onto loader data via a pure `mergeLivePrices`; if the socket is down, polling
+  the loader still renders a complete UI. **Win:** real-time when available,
+  correct when not. **Cost:** two code paths for "current price" and the merge
+  logic to reconcile them — accepted so a flaky socket can never blank the page.
+
+- **Remix v2, not React Router 7.** The exercise specifies Remix, but
+  `create-remix` now only redirects to RR7. **Cost:** scaffolded manually against
+  the stable v2 Vite template and pinned to v2 — chosen over fighting the
+  scaffolder or silently migrating off the brief.
+
+- **Filter in the URL, order + prefs in storage.** Filter is ephemeral and
+  shareable → `?q=`; order/theme are durable preferences → persisted. **Win:**
+  shareable, reload-safe state with **no global store**. **Cost:** state lives in
+  a few different places by nature, rather than one tidy store.
+
+- **Hand-rolled SVG sparklines + chart, no charting library.** **Win:** zero
+  dependency weight, fully on-theme, and the hover-crosshair is just pointer math.
+  **Cost:** we maintain the line/area/scale code ourselves — cheap for a
+  sparkline, and it keeps the bundle and the supply-chain surface small.
+
+- **Motion (framer-motion) is the one animation dependency.** Added deliberately
+  for spring layout and modal transitions CSS can't do cleanly. **Tradeoff:** one
+  runtime dep accepted for genuine UX value; reduced-motion is honored throughout.
+
+- **Cookie-session auth, not a JWT in localStorage.** A signed, `httpOnly`,
+  `sameSite=lax` cookie holds only the user id; `requireUser` looks the user up
+  server-side per request. Passwords are **scrypt-hashed with Node built-ins** (no
+  bcrypt dep). **Win:** tokens aren't readable by page scripts (XSS-resistant).
+  **Cost:** server lookup per request instead of a self-contained token —
+  acceptable, and the right default for credentials.
+
+- **Two-tier preference storage (server wins, localStorage caches).** Per-user
+  prefs live server-side keyed by `userId` so they follow the account across
+  devices; `localStorage` is a fast-path cache for flash-free first paint. **Win:**
+  cross-device prefs *and* instant paint. **Cost:** real reconciliation work — a
+  `userTouched` guard stops the async server hydrate from clobbering an early
+  interaction, and a `sendBeacon` page-hide flush stops a change-then-reload from
+  losing data to the save debounce.
+
+- **"Tracked" and "watchlist" are separate concepts.** Tracking = which coins are
+  fetched/priced/streamed; watchlist = a favorites *view* over them. **Why it
+  matters:** conflating them caused the early "added coin disappears" bug — the
+  split is the fix, at the cost of two ideas to keep straight.
+
+- **Themes are full palettes, not an accent swap.** Each of the 9 themes redefines
+  colours, fonts, card shape, and background via a `data-theme` + `data-mode`
+  contract in `tailwind.css`. **Cost:** more design tokens to maintain than a
+  single dark/light pair — the price of themes that feel genuinely distinct rather
+  than recoloured.
+
+- **Mock-data mode (`E2E_MOCK=1`) for zero-network runs.** Deterministic fixtures
+  let the whole app (and Playwright) run with **no external calls**. **Win:** fast,
+  deterministic, CI- and offline-safe tests. **Cost:** a fixture set to keep
+  roughly in step with the real API shape.
+
+- **File-backed JSON stores (`.data/*.json`).** Dependency-free persistence for
+  users, prefs, and portfolios. **Cost:** not concurrent-write-safe and won't
+  scale — deliberately fine for a demo, and each store is isolated behind a module
+  so swapping in a real database touches one file (see below).
+
+## Where we can extend this
+
+The architecture was built to make these additions small, isolated changes — not
+rewrites. Each maps to a seam that already exists:
+
+- **Swap the data provider.** Only `coinbase.ts` (REST) and `coinbase-ws.ts` (WS
+  wire format) know provider shapes; everything downstream is provider-agnostic.
+  Reimplement those two and the UI, types, and tests are untouched.
+- **Move to a real database.** The file-backed stores already isolate persistence
+  behind a module each, so SQLite/Postgres swaps in behind the same interface
+  without touching routes or components.
+- **Add sort controls (by price / 24h change).** The pure `lib/` layer is shaped
+  for it — add a `sortCryptos` function + test, store the active sort in the URL
+  like the filter, and disable drag while a sort is active (the recipe is in
+  [`CLAUDE.md`](./CLAUDE.md)).
+- **Add a new card field or coin.** A field is a 3-step change (add to the type,
+  populate it in `buildRates` with a test, then format and render); a coin is a
+  single entry in `TRACKED_CURRENCIES`. Both are documented recipes in `CLAUDE.md`.
+- **Harden the server.** Add rate-limit/backoff handling and a
+  stale-while-revalidate cache around the loader's Coinbase calls — the
+  short-TTL candle cache is already the hook to build on.
+- **Broaden test coverage.** Extend E2E to portfolio P&L and per-theme effects,
+  and add visual-regression snapshots over the themes.
