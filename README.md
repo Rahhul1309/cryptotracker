@@ -239,6 +239,36 @@ control, swapping the data provider).
 
 ---
 
+## Contributing & follow-up features (humans + AI agents)
+
+This repo ships **explicit guidelines for extending it**, so a follow-up feature
+(by a person or an AI agent) lands consistently instead of drifting:
+
+- **[`CLAUDE.md`](./CLAUDE.md)** — the mental model + **copy-paste recipes**: add
+  a coin, add a sort control, add a card field, swap the data provider, change the
+  refresh interval. Start here for *how* to build a feature.
+- **[`rules/`](./rules/)** — the enforceable standards every change must meet
+  ([overview](./rules/README.md)):
+  [`ai-guardrails`](./rules/ai-guardrails.md) (hard *never/always* list) ·
+  [`code-quality`](./rules/code-quality.md) (layer boundaries, TS, purity) ·
+  [`fix-quality`](./rules/fix-quality.md) (root-cause, invariants) ·
+  [`framework-integrity`](./rules/framework-integrity.md) (Remix/React) ·
+  [`security`](./rules/security.md) · [`verification`](./rules/verification.md)
+  (the mandatory gate).
+- **[`AGENTS.md`](./AGENTS.md)** — a tool-agnostic entry point (Cursor, Copilot,
+  Aider, etc.) that points any agent at the same rules and recipes.
+- **The gate is mechanical, not aspirational:** every change must pass
+  `npm run typecheck && npm test && npm run build` (`npm run check`), enforced in
+  [CI](./.github/workflows/ci.yml). New pure logic in `app/lib/` ships **with a
+  unit test in the same change**.
+
+> **Golden rule:** business logic goes in `app/lib/` as a pure, tested function;
+> components stay presentational; data I/O stays at the two boundaries (the Remix
+> loader and the WebSocket). If a guideline ever conflicts, `ai-guardrails.md`
+> wins.
+
+---
+
 ## Decisions & tradeoffs
 
 Each choice below names the **alternative** and what it **costs**, not just what
