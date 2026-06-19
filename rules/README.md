@@ -18,6 +18,11 @@ add a sort control, swap the data provider), see [`../CLAUDE.md`](../CLAUDE.md).
 
 - **Skill** — [`.claude/skills/frontend`](../.claude/skills/frontend/SKILL.md):
   guidance for building UI in the Midnight Terminal design system.
+- **Agent** — [`.claude/agents/feature-planner.md`](../.claude/agents/feature-planner.md):
+  a read-only planner that turns a requirement into a codebase-aware,
+  rule-respecting implementation plan (where logic lives, what to reuse, tests,
+  tradeoffs) — it plans, it doesn't write the feature. Invoke with the Agent tool
+  (`subagent_type: feature-planner`) or ask Claude to "plan / scope how to add X."
 - **Agent** — [`.claude/agents/repo-janitor.md`](../.claude/agents/repo-janitor.md):
   a read-only custodian that audits structural drift, dead code, and dependency
   updates against these rules, and applies only approved, reversible cleanups.

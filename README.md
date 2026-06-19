@@ -257,6 +257,10 @@ This repo ships **explicit guidelines for extending it**, so a follow-up feature
   (the mandatory gate).
 - **[`AGENTS.md`](./AGENTS.md)** — a tool-agnostic entry point (Cursor, Copilot,
   Aider, etc.) that points any agent at the same rules and recipes.
+- **Planning agent** — [`.claude/agents/feature-planner.md`](./.claude/agents/feature-planner.md)
+  turns a requirement into a codebase-aware, rule-respecting implementation plan
+  (where logic lives, what to reuse, tests, tradeoffs) *before* any code is
+  written. Ask Claude to "plan / scope how to add X."
 - **The gate is mechanical, not aspirational:** every change must pass
   `npm run typecheck && npm test && npm run build` (`npm run check`), enforced in
   [CI](./.github/workflows/ci.yml). New pure logic in `app/lib/` ships **with a
