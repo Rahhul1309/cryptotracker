@@ -15,7 +15,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // One worker: the suite shares a single file-backed user/prefs store
+  // (.data/*.json), which is intentionally not concurrent-write-safe. Parallel
+  // specs race on it (lost signups → stuck on /login), so run serially.
+  workers: 1,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: BASE_URL,
