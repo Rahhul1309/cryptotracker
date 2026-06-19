@@ -21,37 +21,26 @@ driven by CSS variables, so dark/light is a single token swap.
 
 ## Features
 
-| Requirement | Status | Notes |
-|---|---|---|
-| Card layout (≥10 coins) | ✅ | 12 coins, responsive 1→4 column grid |
-| Name + symbol per card | ✅ | |
-| USD exchange rate | ✅ | Adaptive precision ($68,000 and $0.0000012 both read well) |
-| BTC exchange rate | ✅ | Derived from the same single exchange-rate call |
-| 24h sparkline + change % | ➕ | Real hourly candles, fetched in parallel, best-effort |
-| Live market stat bar | ➕ | Avg 24h, top gainer/loser, asset count |
-| Dynamic data fetch | ✅ | Server-side loader, fetched on load |
-| Manual + auto refresh | ✅ | Auto-refresh toggle (30s), pauses on hidden tab |
-| Drag & drop reorder | ✅ | [@dnd-kit](https://dndkit.com) — pointer **and** keyboard accessible |
-| Filter by name/symbol | ✅ | Case-insensitive, synced to URL (`?q=`) |
-| **Bonus:** order → localStorage | ✅ | Survives reload; keyed by symbol |
-| **Bonus:** dark/light toggle | ✅ | SSR-safe, no flash of wrong theme |
-| **Bonus:** loading/error states | ✅ | Skeleton, error boundary w/ retry, empty state |
-| Real-time prices (WebSocket) | ➕ | Live Coinbase ticker feed, no backend; polling fallback |
-| Motion UI (spring layout, modal) | ➕ | Motion lib: spring reorder/filter, animated detail modal |
-| Rolling-digit prices | ➕ | Odometer digits roll on each live tick |
-| Live ticker tape | ➕ | Seamless scrolling marquee of all coins |
-| Interactive detail modal | ➕ | Click a card → live chart with hover-to-inspect history |
-| Card tilt · price glow | ➕ | 3D tilt-on-hover, glow follows tick direction, green/red/flat price |
-| Personalization panel | ➕ | Theme + accent, density, grid/list, toggles, precision, live switch, pin/hide coins — all persisted |
-| Themes | ➕ | 7 full themes (midnight, gold, silver, cartoon, mario, sports, casual) — palette + background + cards |
-| Watchlist + universal search | ➕ | Search ANY Coinbase coin & add it (shows real data); per-user watchlist, All/Watchlist view |
-| Portfolio simulation | ➕ | Record simulated buys, see live P/L vs current price on `/portfolio` |
-| Per-user preferences | ➕ | Theme/accent/watchlist/order persist server-side per account — follow you across devices |
-| Top-movers spotlight | ➕ | Larger gainer/loser cards with bigger charts |
-| **Bonus:** user authentication | ✅ | Cookie-session auth, scrypt-hashed passwords (no deps), protected dashboard |
-| **Bonus:** unit tests | ✅ | 106 tests over the pure logic layer (Vitest) |
-| E2E tests | ➕ | Playwright specs (auth, watchlist, themes, modal) — run against mock data, no live calls |
-| Observability | ➕ | Structured JSON logger, request ids, loader/action timing, in-memory metrics |
+✅ = core requirement · ➕ = enhancement beyond the brief.
+
+- **Live data** ✅➕ — 12 coins in a responsive 1→4 column grid; USD + BTC rates
+  from one Coinbase call (adaptive precision); 24h sparkline + change % from real
+  candles (best-effort); live market stat bar (avg 24h, top gainer/loser).
+- **Real-time** ➕ — client WebSocket to Coinbase's public ticker (no backend),
+  with polling fallback; rolling-digit prices, scrolling ticker tape, price-flash.
+- **Interaction** ✅ — filter by name/symbol (URL `?q=`), drag-and-drop reorder
+  (pointer **and** keyboard, persisted by symbol), manual + auto refresh (30s,
+  pauses on hidden tab).
+- **Detail & motion** ➕ — click a card for a live interactive chart modal with
+  hover-to-inspect; spring layout/reorder, 3D card tilt, top-movers spotlight.
+- **Personalization** ➕ — 9 full themes (palette + fonts + background + cards),
+  SSR-safe dark/light with no flash, accent/density/layout panel — all persisted.
+- **Accounts** ✅➕ — cookie-session auth (scrypt-hashed, no deps); universal
+  search to track *any* Coinbase coin, per-user watchlist, and `/portfolio` P/L
+  simulation; preferences persist **server-side per account** across devices.
+- **Quality** ✅➕ — loading/error/empty states with retry; **153 unit tests**
+  (Vitest) + Playwright E2E (mock mode, zero live calls); structured JSON
+  observability (request ids, timing, metrics).
 
 ---
 
@@ -97,37 +86,21 @@ npm run test:watch  # watch mode
 ```
 
 ### End-to-end tests (Playwright)
-E2E specs in `e2e/` cover the real user flows — auth (signup / login / logout /
-redirect), search-and-track, watchlist, remove-coin, the detail modal, theme +
-dark/light persistence, and the live toggle.
-
-**First-time setup** — install the browser binary once:
+E2E specs in `e2e/` cover the real user flows — auth, search-and-track,
+watchlist, remove-coin, the detail modal, theme/dark-light persistence, and the
+live toggle.
 
 ```bash
-npx playwright install chromium
+npx playwright install chromium   # one-time: install the browser binary
+npm run test:e2e                  # builds + serves itself; runs all specs
+npm run test:e2e -- --ui          # interactive debug mode
 ```
 
-**Run the suite:**
-
-```bash
-npm run test:e2e            # headless, all specs
-npm run test:e2e -- --ui    # interactive UI mode (great for debugging)
-npx playwright test -g "watchlist"   # run specs matching a name
-npx playwright show-report  # open the HTML report after a run
-```
-
-`npm run test:e2e` builds the app and serves it itself (see the `webServer`
-block in `playwright.config.ts`) — you don't need a dev server running.
-
-### Why the tests never call Coinbase
-Playwright runs the app with **`E2E_MOCK=1`**, which makes the loader serve
-deterministic fixtures (`app/lib/coinbase-mock.ts`), the catalog/search serve a
-fixed list, and the live WebSocket stay off (the root loader sets
-`window.__E2E__`). The result: **zero external calls**, so the suite is fast,
-deterministic, and safe for CI and locked-down machines. `E2E_MOCK` is set
-*only* by `playwright.config.ts`; a normal `npm run dev`/`start` never sets it
-and always uses live data. The test server also runs with a non-`secure` session
-cookie so auth works over `http://localhost`.
+The suite runs with **`E2E_MOCK=1`** (set only by `playwright.config.ts`), so the
+loader serves deterministic fixtures (`coinbase-mock.ts`) and the WebSocket stays
+off — **zero external calls**, safe for CI and offline machines. A normal
+`dev`/`start` never sets it. It runs **serially** (one worker) because the
+file-backed user/prefs store isn't concurrent-write-safe.
 
 ### Observability
 Server logs are structured JSON (`app/lib/observability/`). Control verbosity
@@ -138,6 +111,47 @@ and increment counters; see `app/lib/observability/README.md`.
 ---
 
 ## How it works
+
+### Architecture at a glance
+
+```mermaid
+flowchart LR
+    subgraph ext["External (untrusted)"]
+        REST["Coinbase REST<br/>rates + candles"]
+        WS["Coinbase WebSocket<br/>ticker feed"]
+    end
+
+    subgraph server["Server (Remix loader)"]
+        L["loader<br/>app/routes/_index.tsx"]
+        LIB["Pure logic · app/lib/<br/>rates · filter · order · format"]
+        STORE[("File stores<br/>.data/*.json<br/>users · prefs · portfolio")]
+    end
+
+    subgraph client["Client (React)"]
+        HOOKS["Hooks<br/>useLivePrices · useCardOrder<br/>useTheme · useAutoRefresh"]
+        UI["Components<br/>CryptoGrid · Cards · Modal · StatBar"]
+        LS[("localStorage<br/>order · theme cache")]
+    end
+
+    REST -->|fetch + validate| L
+    L --> LIB --> L
+    L -->|loader data SSR| UI
+    STORE <-->|per-user prefs| L
+    WS -.->|live ticks| HOOKS
+    HOOKS -->|mergeLivePrices overlay| UI
+    UI <--> HOOKS
+    HOOKS <--> LS
+    UI -.->|refresh = revalidate| L
+
+    classDef extNode fill:#3a2a2a,stroke:#a66,color:#eee;
+    class REST,WS extNode;
+```
+
+**Read it as two I/O boundaries** — the server `loader` (REST, SSR, source of
+truth) and the client WebSocket (live ticks that *augment* loader data, never
+replace it). Everything between is pure `app/lib/` logic (testable) and
+presentational components. If the socket drops, polling the loader still renders
+a complete UI; if a coin's candles fail, only its sparkline drops.
 
 ### Data flow — prices in one call, trends in parallel
 Coinbase's `GET /v2/exchange-rates?currency=USD` returns a single map of
