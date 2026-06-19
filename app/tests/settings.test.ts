@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SETTINGS,
+  addCoinPatch,
   applyVisibilityAndPins,
   mergeSettings,
   parseSettings,
+  removeCoinPatch,
 } from "~/lib/settings";
 
 describe("mergeSettings", () => {
@@ -85,6 +87,99 @@ describe("parseSettings", () => {
     const parsed = parseSettings(json);
     expect(parsed.accent).toBe("emerald");
     expect(parsed.precision).toBe(4);
+  });
+});
+
+describe("removeCoinPatch", () => {
+  const DEFAULTS = ["BTC", "ETH", "SOL"] as const;
+  const base = { tracked: [] as string[], hidden: [] as string[], watchlist: [] as string[] };
+
+  it("hides a curated default (it can't be untracked)", () => {
+    const patch = removeCoinPatch(base, "SOL", DEFAULTS);
+    expect(patch.hidden).toEqual(["SOL"]);
+    expect(patch.tracked).toBeUndefined();
+  });
+
+  it("drops a user-added coin from tracked and does NOT hide it", () => {
+    const patch = removeCoinPatch(
+      { ...base, tracked: ["UNI"] },
+      "UNI",
+      DEFAULTS,
+    );
+    expect(patch.tracked).toEqual([]);
+    // Crucial: a removed extra must not leave a stale `hidden` entry, or
+    // re-adding it later would keep it invisible.
+    expect(patch.hidden).toBeUndefined();
+  });
+
+  it("also removes the coin from the watchlist", () => {
+    const patch = removeCoinPatch(
+      { ...base, watchlist: ["SOL", "BTC"] },
+      "SOL",
+      DEFAULTS,
+    );
+    expect(patch.watchlist).toEqual(["BTC"]);
+  });
+
+  it("is a no-op patch when the default is already hidden", () => {
+    const patch = removeCoinPatch(
+      { ...base, hidden: ["SOL"] },
+      "SOL",
+      DEFAULTS,
+    );
+    expect(patch.hidden).toBeUndefined();
+  });
+
+  it("does not mutate the input", () => {
+    const input = { tracked: ["UNI"], hidden: ["SOL"], watchlist: ["UNI"] };
+    const snapshot = JSON.parse(JSON.stringify(input));
+    removeCoinPatch(input, "UNI", DEFAULTS);
+    expect(input).toEqual(snapshot);
+  });
+});
+
+describe("addCoinPatch", () => {
+  const DEFAULTS = ["BTC", "ETH", "SOL"] as const;
+  const base = { tracked: [] as string[], hidden: [] as string[] };
+
+  it("tracks a non-default coin", () => {
+    const patch = addCoinPatch(base, "UNI", DEFAULTS);
+    expect(patch.tracked).toEqual(["UNI"]);
+  });
+
+  it("un-hides a previously-deleted default so it reappears (the bug)", () => {
+    // Delete SOL → hidden:["SOL"]. Re-adding it via search must clear hidden,
+    // otherwise the card stays invisible while search says "✓ Tracking".
+    const patch = addCoinPatch({ tracked: [], hidden: ["SOL"] }, "SOL", DEFAULTS);
+    expect(patch.hidden).toEqual([]);
+    // A default isn't added to `tracked` (the loader already fetches it).
+    expect(patch.tracked).toBeUndefined();
+  });
+
+  it("un-hides AND tracks a previously-deleted non-default", () => {
+    const patch = addCoinPatch(
+      { tracked: [], hidden: ["UNI"] },
+      "UNI",
+      DEFAULTS,
+    );
+    expect(patch.hidden).toEqual([]);
+    expect(patch.tracked).toEqual(["UNI"]);
+  });
+
+  it("is a no-op patch when already tracked and visible", () => {
+    const patch = addCoinPatch(
+      { tracked: ["UNI"], hidden: [] },
+      "UNI",
+      DEFAULTS,
+    );
+    expect(patch).toEqual({});
+  });
+
+  it("does not mutate the input", () => {
+    const input = { tracked: ["ATOM"], hidden: ["SOL"] };
+    const snapshot = JSON.parse(JSON.stringify(input));
+    addCoinPatch(input, "SOL", DEFAULTS);
+    expect(input).toEqual(snapshot);
   });
 });
 

@@ -192,6 +192,68 @@ export function parseSettings(json: string | null): Settings {
 }
 
 /**
+ * Compute the settings change for REMOVING a coin from the dashboard, for ANY
+ * coin (curated default or user-added). Returns only the fields that change.
+ *
+ * The split exists because the two kinds of coin are removed differently:
+ *  - a user-added coin lives in `tracked`     → drop it from `tracked`
+ *  - a curated default isn't in `tracked`     → hide it via `hidden`
+ * Either way it's also dropped from the watchlist so it can't linger there.
+ *
+ * `defaultSymbols` is the curated set, used to decide which mechanism applies —
+ * passing it keeps this pure (no import of crypto-config).
+ */
+export function removeCoinPatch(
+  settings: Pick<Settings, "tracked" | "hidden" | "watchlist">,
+  symbol: string,
+  defaultSymbols: readonly string[],
+): Partial<Settings> {
+  const patch: Partial<Settings> = {};
+
+  if (settings.tracked.includes(symbol)) {
+    patch.tracked = settings.tracked.filter((s) => s !== symbol);
+  }
+  // A curated default can't be dropped from `tracked` (it isn't there), so hide
+  // it. A user-added coin is removed via `tracked` above and must NOT also be
+  // hidden — otherwise re-adding it later would leave a stale hidden entry that
+  // keeps it invisible.
+  if (defaultSymbols.includes(symbol) && !settings.hidden.includes(symbol)) {
+    patch.hidden = [...settings.hidden, symbol];
+  }
+  if (settings.watchlist.includes(symbol)) {
+    patch.watchlist = settings.watchlist.filter((s) => s !== symbol);
+  }
+  return patch;
+}
+
+/**
+ * Compute the settings change for ADDING (tracking) a coin from search, for ANY
+ * coin. Returns only the fields that change.
+ *
+ * Adding must always make the coin VISIBLE again — so it un-hides the symbol if
+ * it was previously removed. Without this, re-adding a deleted default coin
+ * shows "✓ Tracking" in search yet the card never reappears (it's still in
+ * `hidden`). User-added coins also go into `tracked` (defaults are already
+ * fetched by the loader, so they only need un-hiding).
+ */
+export function addCoinPatch(
+  settings: Pick<Settings, "tracked" | "hidden">,
+  symbol: string,
+  defaultSymbols: readonly string[],
+): Partial<Settings> {
+  const patch: Partial<Settings> = {};
+
+  if (settings.hidden.includes(symbol)) {
+    patch.hidden = settings.hidden.filter((s) => s !== symbol);
+  }
+  // Only non-defaults need to be added to `tracked`; defaults are always fetched.
+  if (!defaultSymbols.includes(symbol) && !settings.tracked.includes(symbol)) {
+    patch.tracked = [...settings.tracked, symbol];
+  }
+  return patch;
+}
+
+/**
  * Apply pin/hide preferences to an ordered list of items (keyed by symbol).
  * Hidden symbols are removed; pinned symbols are moved to the front in pin
  * order. Pure — used by the route after drag-order + filter resolve.

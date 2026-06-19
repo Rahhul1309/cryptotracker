@@ -14,7 +14,11 @@ import { TRACKED_CURRENCIES } from "~/lib/crypto-config";
 import { filterCryptos } from "~/lib/filter";
 import { buildSnapshot } from "~/lib/rates";
 import { mergeLivePrices } from "~/lib/live-merge";
-import { applyVisibilityAndPins } from "~/lib/settings";
+import {
+  addCoinPatch,
+  applyVisibilityAndPins,
+  removeCoinPatch,
+} from "~/lib/settings";
 import type { DashboardData } from "~/types/crypto";
 
 import { CryptoGrid } from "~/components/CryptoGrid";
@@ -202,19 +206,34 @@ export default function Dashboard() {
   // All vs Watchlist view.
   const [view, setView] = useState<"all" | "watchlist">("all");
 
-  // Remove a coin from the dashboard — works for EVERY coin:
-  //  - user-added (in `tracked`)  → drop from tracked (loader stops fetching it)
-  //  - curated default            → add to `hidden` (kept in config, just hidden)
-  // Either way, also drop it from the watchlist so it doesn't linger there.
+  // Remove a coin from the dashboard — works for EVERY coin (user-added or
+  // curated default). The reconciliation logic (which store to touch, never
+  // leaving a stale `hidden` entry on a removed extra) lives in the pure,
+  // unit-tested `removeCoinPatch`. One `update` keeps the change atomic.
   const removeCoin = (symbol: string) => {
-    if (settings.tracked.includes(symbol)) {
-      update({ tracked: settings.tracked.filter((s) => s !== symbol) });
-    } else if (!settings.hidden.includes(symbol)) {
-      update({ hidden: [...settings.hidden, symbol] });
-    }
-    if (settings.watchlist.includes(symbol)) {
-      update({ watchlist: settings.watchlist.filter((s) => s !== symbol) });
-    }
+    update(removeCoinPatch(settings, symbol, TRACKED_SYMBOLS));
+  };
+
+  // What search shows as "✓ Tracking": user-added coins PLUS curated defaults
+  // that haven't been hidden. This keeps the search indicator consistent with
+  // what's actually on the dashboard (a deleted default reads as untracked).
+  const searchTrackedSymbols = useMemo(() => {
+    const hiddenSet = new Set(settings.hidden);
+    const visibleDefaults = TRACKED_SYMBOLS.filter((s) => !hiddenSet.has(s));
+    return Array.from(new Set([...visibleDefaults, ...settings.tracked]));
+  }, [settings.hidden, settings.tracked]);
+
+  // Add (track) a coin from search — also UN-HIDES it, so re-adding a coin you
+  // previously deleted brings the card back (a default that's still `hidden`
+  // would otherwise stay invisible while search shows "✓ Tracking"). Toggling a
+  // tracked coin off in search routes through the same removal path for symmetry.
+  const toggleTrack = (symbol: string) => {
+    const isTracked = searchTrackedSymbols.includes(symbol);
+    update(
+      isTracked
+        ? removeCoinPatch(settings, symbol, TRACKED_SYMBOLS)
+        : addCoinPatch(settings, symbol, TRACKED_SYMBOLS),
+    );
   };
 
   // Order (drag, persisted), then pins/hide preferences, then view, then filter.
@@ -371,8 +390,8 @@ export default function Dashboard() {
             the dashboard with real data + live updates). Distinct from the
             per-card ★ which marks a tracked coin as a watchlist favorite. */}
         <CoinSearch
-          tracked={settings.tracked}
-          onToggleTrack={(s) => toggleIn("tracked", s)}
+          tracked={searchTrackedSymbols}
+          onToggleTrack={toggleTrack}
         />
       </header>
 
