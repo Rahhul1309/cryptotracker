@@ -291,6 +291,17 @@ was picked — the point is to make the engineering judgement visible.
   it in the component" is off-limits, so live prices needed a deliberate second
   boundary (the WebSocket) rather than an ad-hoc `useEffect`.
 
+- **WebSocket streaming over REST polling for live prices.** Prices update via a
+  client-side subscription to Coinbase's public `ticker` WebSocket, not by
+  re-polling the REST endpoint on a timer. **Win:** sub-second, push-based updates
+  with no wasted requests — polling fast enough to feel "live" would hammer the
+  REST API (and its rate limit) with mostly-unchanged responses, while polling
+  slowly feels stale. The feed is public and unauthenticated, so it streams
+  straight from the browser with **no custom backend** (a proxy would only earn
+  its keep to hide a key or fan out to many clients — neither applies). **Cost:**
+  a stateful connection to manage (reconnect/backoff, tab-visibility pause,
+  SSR-safety) — encapsulated in `useLivePrices` so the rest of the app is unaware.
+
 - **Live prices augment, never depend.** The Coinbase WebSocket overlays ticks
   onto loader data via a pure `mergeLivePrices`; if the socket is down, polling
   the loader still renders a complete UI. **Win:** real-time when available,
